@@ -1,6 +1,7 @@
 # Importing Necessary Dependencies
 import modulefinder
 import os
+import webbrowser
 import streamlit as st
 
 from langchain_community.utilities import WikipediaAPIWrapper, ArxivAPIWrapper
@@ -15,6 +16,31 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain.callbacks import StreamlitCallbackHandler
+
+# Building our retriever tool
+def get_retriever_tool():
+    try: 
+        loader = WebBaseLoader("https://docs.smith.langchain.com/overview")
+        docs = loader.load()
+
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        documents = text_splitter.split_documents(docs)
+
+        embedding = OllamaEmbeddings(model='mxbai-embed-large:335m')
+        vectordb = Chroma.from_documents(documents=documents, embedding=embedding)
+
+        retriever = vectordb.as_retriever()
+
+        retriever_tool = create_retriever_tool(
+            retriever,
+            'retriever_tool',
+            'RAG Vectordb for our agent'
+        )
+
+        return retriever_tool
+
+    except Exception as e:
+        print(e)
 
 # Building Tools for our agents
 def get_tools():
@@ -53,6 +79,7 @@ def initialize_sessions():
     '''
 
     st.session_state.arxiv_tool, st.session_state.wiki_tool, st.session_state.search_tool = get_tools()
+    # st.session_state.retriever_tool = get_retriever_tool()
     st.session_state.tools = [st.session_state.arxiv_tool, st.session_state.wiki_tool, st.session_state.search_tool]
 
     st.session_state.llm = ChatOllama(
@@ -65,3 +92,16 @@ def initialize_sessions():
         agent = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
         verbose = True
     )
+
+if prompt := st.chat_input('Enter what you want to do with the agent'):
+
+    # Initializing all the streamlit session of creating an agent
+    initialize_sessions()
+
+    with st.chat_message("assistant"):
+        st_callback = StreamlitCallbackHandler(st.container())
+        response = st.session_state.agent.invoke(
+            {"input": f'{prompt}, Only use tool if needed otherwise respond with a final answer dont stuck in a loop'},
+            {"callbacks": [st_callback]}
+        )
+        st.write(response["output"])
