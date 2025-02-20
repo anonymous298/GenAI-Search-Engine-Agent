@@ -90,18 +90,36 @@ def initialize_sessions():
         llm = st.session_state.llm,
         tools = st.session_state.tools,
         agent = AgentType.ZERO_SHOT_REACT_DESCRIPTION,
-        verbose = True
+        verbose = True,
+        handling_parsing_errors = True
     )
+
+if 'messages' not in st.session_state:
+    st.session_state['messages'] = [
+        {'role' : 'assistant', 'content' : 'Hello! I am a chatbot who can search the web. How can I help you today?'}
+    ]
+
+for msg in st.session_state.messages:
+    st.chat_message(msg['role']).write(msg['content'])
 
 if prompt := st.chat_input('Enter what you want to do with the agent'):
 
+    st.session_state.messages.append({'role' : 'user', 'content' : prompt}) 
+
     # Initializing all the streamlit session of creating an agent
-    initialize_sessions()
+    if 'agent' not in st.session_state:
+        initialize_sessions()
+
+    with st.chat_message("user"):
+        st.write(prompt)
 
     with st.chat_message("assistant"):
         st_callback = StreamlitCallbackHandler(st.container())
         response = st.session_state.agent.invoke(
-            {"input": f'{prompt}, Only use tool if needed otherwise respond with a final answer dont stuck in a loop'},
-            {"callbacks": [st_callback]}
+            st.session_state.messages,
+            callbacks = [st_callback]
         )
+
+        st.session_state.messages.append({'role' : 'assistant', 'content' : response['output']})
+
         st.write(response["output"])
